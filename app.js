@@ -9,6 +9,10 @@ const passportLocalMongoose = require('passport-local-mongoose');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const findOrCreate = require('mongoose-findorcreate');
 
+const crypto = require('crypto');
+
+const nodemailer = require("nodemailer");
+
 //const bcrypt = require('bcrypt');
 //const saltRounds = 10;
 //level2
@@ -39,8 +43,23 @@ mongoose.connect('mongodb://localhost:27017/userDB', {
 });
 
 const userSchema = new mongoose.Schema({
-  email: String,
-  password: String,
+  name: {
+    type: String,
+    // required: true
+  },
+  email: {
+    type: String,
+    unique: true,
+    // required: true
+  },
+  category: {
+    type: String,
+    // required: true
+  },
+  password: {
+    type: String,
+    // required: true
+  },
   googleId: String
 });
 
@@ -74,7 +93,9 @@ passport.use(new GoogleStrategy({
     callbackURL: "http://localhost:3000/auth/google/auth"
   },
   function(accessToken, refreshToken, profile, cb) {
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+    User.findOrCreate({
+      googleId: profile.id
+    }, function(err, user) {
       return cb(err, user);
     });
   }
@@ -85,24 +106,31 @@ app.get('/', function(req, res) {
 });
 
 app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile'] })
+  passport.authenticate('google', {
+    scope: ['profile']
+  })
 );
 
 app.get('/auth/google/auth',
-  passport.authenticate('google', { failureRedirect: '/login' }),
+  passport.authenticate('google', {
+    failureRedirect: '/login'
+  }),
   function(req, res) {
     // Successful authentication, redirect to secrets .
-    res.redirect('/secrets');
+    res.redirect('/dashboard');
   });
 
 app.get('/login', function(req, res) {
   res.render('login')
 });
 
-app.get('/secrets', function(req, res) {
-  if(req.isAuthenticated()){
-    res.render('secrets')
-  }else{
+app.get('/dashboard', function(req, res) {
+  if (req.isAuthenticated()) {
+    res.render('dashboard', {
+      name: req.user.name,
+      category: req.user.category
+    })
+  } else {
     res.redirect('/login')
   }
 
@@ -119,40 +147,66 @@ app.get('/logout', function(req, res) {
 
 app.post('/register', function(req, res) {
 
-User.register({username:req.body.username}, req.body.password, function(err, user){
-  if(err){
-    console.log(err);
-    res.redirect('/register');
-  }else{
-    passport.authenticate('local')(req, res, function(){
-      res.redirect('/secrets')
-    });
-  }
+  User.register({
+    username: req.body.username,
+    name: req.body.name,
+    category: req.body.category
+  }, req.body.password, function(err, user) {
+    if (err) {
+      console.log(err);
+      res.redirect('/register');
+    } else {
+      passport.authenticate('local')(req, res, function() {
+        //verified email
+        const token = crypto.randomBytes(32).toString('hex');
+        const url = 'http://localhost:3000?token=' + token;
+        console.log(url);
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: 'goleaiman@gmail.com',
+            password: 'imancanadabatna2017'
+          }
+        })
+        // transporter.sendMail({
+        //   from: 'email', // sender address
+        //   to: username, // list of receivers
+        //   subject: "verify your account", // Subject line
+        //   text: "Click this link to verify : ${url}", // plain text body
+        //    html: "<h3>Click this link to verify : ${url}</h3>", // html body
+        // })
 
-});
+
+        res.redirect('/dashboard')
+      });
+    }
+
+  });
 
 
 });
 
 app.post('/login', function(req, res) {
 
-const user = new User({
-  username: req.body.username,
-  password: req.body.password
-})
-req.login(user, function(err){
-  if(err){
-    console.log(err);
-  }else{
-    passport.authenticate('local')(req, res, function(){
-      res.redirect('/secrets')
-    });
-  }
-})
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  })
+  req.login(user, function(err) {
+    if (err) {
+      console.log(err);
+    } else {
+      passport.authenticate('local')(req, res, function() {
+        res.redirect('/dashboard')
+      });
+    }
+  })
 
 
 
 })
+
+
 
 
 
